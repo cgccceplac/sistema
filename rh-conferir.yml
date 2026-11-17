@@ -1,0 +1,54 @@
+name: RH — conferir base de pessoal
+
+# Roda sozinho quando uma planilha (.xls/.xlsx) ou o PDF do SIAPE é enviado para rh/entrada/.
+# Também pode ser rodado à mão em Actions > "RH — conferir base de pessoal" > Run workflow.
+on:
+  push:
+    paths:
+      - "rh/entrada/**"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: rh-conferir
+  cancel-in-progress: false
+
+jobs:
+  conferir:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # precisa do histórico para saber qual arquivo é o mais recente
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Instalar dependências
+        run: pip install pandas xlrd openpyxl pypdf
+
+      - name: Conferir (gera RELATORIO.md, pessoal.json, siape.json, mudancas.csv)
+        run: python rh/scripts/atualizar.py
+
+      - name: Guardar resultado no repositório
+        run: |
+          git config user.name  "rh-bot"
+          git config user.email "rh-bot@users.noreply.github.com"
+          git add rh/RELATORIO.md rh/dados
+          if git diff --cached --quiet; then
+            echo "Sem alterações para guardar."
+          else
+            git commit -m "RH: conferência automática da base de pessoal"
+            git push
+          fi
+
+      - name: Relatório como arquivo da execução
+        uses: actions/upload-artifact@v4
+        with:
+          name: relatorio-rh
+          path: |
+            rh/RELATORIO.md
+            rh/dados/mudancas.csv
